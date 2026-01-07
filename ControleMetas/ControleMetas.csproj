@@ -63,4 +63,10 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Models\" />
+      <Folder Include="Data\" />
+      <Folder Include="Services\" />
+    </ItemGroup>
+
 </Project>
