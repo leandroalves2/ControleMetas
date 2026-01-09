@@ -1,5 +1,299 @@
 ﻿@page "/"
+@using System.Globalization
+@inject IJSRuntime JS
 
-<h1>Hello, world!</h1>
+<div class="container-fluid p-0 bg-light min-vh-100">
+    <div class="header-planilha d-flex justify-content-between align-items-center p-3 text-white">
+        <h2 class="m-0 fw-bold">
+            @if (mesFiltro == 0) {
+                <span>Fluxo Anual 2026</span>
+            }
+            else {
 
-Welcome to your new app.
+                <span>@CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(mesFiltro).ToUpper()</span>
+            }
+        </h2>
+
+        <div class="d-flex gap-3 align-items-center">
+            @if (mesFiltro != 0) {
+                <button class="btn btn-outline-light btn-sm" @onclick="() => mesFiltro = 0">⬅ Voltar ao Ano</button>
+            }
+            <button class="btn btn-success btn-sm" @onclick="() => exibindoFormulario = !exibindoFormulario">
+                @(exibindoFormulario ? "✖ Fechar" : "+ Adicionar Item")
+            </button>
+        </div>
+    </div>
+
+    @if (exibindoFormulario) {
+        <div class="p-3 bg-white border-bottom shadow-sm">
+            <div class="row g-2">
+                <div class="col-md-3"><input type="text" class="form-control" placeholder="Nome" @bind="novoNome" /></div>
+                <div class="col-md-2"><input type="number" class="form-control" placeholder="Valor" @bind="novoValor" /></div>
+                <div class="col-md-2">
+                    <select class="form-select" @bind="novaCategoria">
+                        <option value="Saida">Saída</option>
+                        <option value="Entrada">Entrada</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" @bind="novaClassificacao">
+                        <option value="Fixo">Fixo</option>
+                        <option value="Variável">Variável</option>
+                    </select>
+                </div>
+                <div class="col-md-2"><button class="btn btn-success w-100" @onclick="AdicionarNovaLinha">Salvar</button></div>
+            </div>
+        </div>
+    }
+
+    <div class="p-4">
+        @if (mesFiltro == 0) {
+            <div class="tabela-wrapper shadow-sm rounded bg-white">
+                <table class="tabela-excel">
+                    <thead>
+                        <tr>
+                            <th class="col-categoria">CATEGORIA</th>
+                            @for (int i = 1; i <= 12; i++) {
+                                int m = i;
+                                <th class="cursor-pointer text-center" @onclick="() => mesFiltro = m">
+                                    @CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(i).ToUpper()
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="row-section-header"><td colspan="13">SAÍDAS</td></tr>
+                        @foreach (var conta in itensFinanceiros.Where(x => x.Tipo == "Saida").Select(x => x.Nome).Distinct()) {
+                            <tr>
+                                <td class="col-categoria">@conta</td>
+                                @for (int i = 1; i <= 12; i++) {
+                                    <td>R$ @GetValorPorNome(conta, i).ToString("N2")</td>
+                                }
+                            </tr>
+                        }
+                        <tr class="row-total-saida">
+                            <td class="col-categoria">TOTAL SAÍDAS</td>
+                            @for (int i = 1; i <= 12; i++) {
+                                <td>R$ @CalcularTotalSaidasMes(i).ToString("N2")</td>
+                            }
+                        </tr>
+                        <tr class="row-spacer"><td colspan="13"></td></tr>
+                        <tr class="row-section-header entradas"><td colspan="13">ENTRADAS</td></tr>
+                        @foreach (var conta in itensFinanceiros.Where(x => x.Tipo == "Entrada").Select(x => x.Nome).Distinct()) {
+                            <tr>
+                                <td class="col-categoria">@conta</td>
+                                @for (int i = 1; i <= 12; i++) {
+                                    <td class="text-success">R$ @GetValorPorNome(conta, i).ToString("N2")</td>
+                                }
+                            </tr>
+                        }
+                        <tr class="row-resultado-final">
+                            <td class="col-categoria">SALDO FINAL</td>
+                            @for (int i = 1; i <= 12; i++) {
+                                <td>R$ @CalcularSaldoFinalAteMes(i).ToString("N2")</td>
+                            }
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card shadow-sm border-0 p-4 mt-4">
+                <h5 class="fw-bold text-primary mb-4">Evolução Financeira Anual</h5>
+                <div id="chart-anual"></div>
+            </div>
+        }
+        else {
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <div class="navegacao-meses d-flex justify-content-between align-items-center mb-3">
+                        <button class="btn btn-outline-primary" @onclick="MesAnterior" disabled="@(mesFiltro <= 1)">❮ Anterior</button>
+                        <h3 class="fw-bold text-primary text-uppercase m-0">@CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(mesFiltro)</h3>
+                        <button class="btn btn-outline-primary" @onclick="ProximoMes" disabled="@(mesFiltro >= 12)">Próximo ❯</button>
+                    </div>
+
+                    <div class="card shadow-sm border-0 mb-4">
+                        <div class="card-body p-0">
+                            <table class="table table-hover m-0">
+                                <thead class="bg-light">
+                                    <tr><th colspan="4" class="text-success fw-bold p-3">📈 ENTRADAS</th><th class="text-end p-3">Valor</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="ps-3"><input type="checkbox" class="form-check-input" @bind="saldoAnteriorPago" /></td>
+                                        <td data-bs-toggle="tooltip" title="Acumulado dos meses anteriores">Saldo Mês Anterior</td>
+                                        <td>Recurso</td>
+                                        <td>-</td>
+                                        <td class="text-end fw-bold text-success pe-3">R$ @CalcularSaldoFinalAteMes(mesFiltro - 1).ToString("N2")</td>
+                                    </tr>
+                                    @foreach (var item in itensFinanceiros.Where(x => x.Tipo == "Entrada")) {
+                                        <tr>
+                                            <td class="ps-3"><input type="checkbox" class="form-check-input" @bind="item.Pago" /></td>
+                                            <td class="@(item.Pago ? "text-decoration-line-through text-muted" : "")">@item.Nome</td>
+                                            <td><span class="badge bg-info text-dark">@item.Classificacao</span></td>
+                                            <td>-</td>
+                                            <td class="text-end fw-bold text-success pe-3">R$ @item.Valor.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div class="bg-light p-1 border-top border-bottom"></div>
+                            <table class="table table-hover m-0">
+                                <thead class="bg-light">
+                                    <tr>
+                                        <th class="ps-3 p-3">STATUS</th>
+                                        <th class="p-3">SAÍDAS</th>
+                                        <th class="p-3">TIPO</th>
+                                        <th class="p-3">IMPACTO/SALÁRIO</th>
+                                        <th class="text-end pe-3 p-3">VALOR</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in itensFinanceiros.Where(x => x.Tipo == "Saida")) {
+                                        var pctSalario = CalcularTotalEntradasMes(mesFiltro) > 0 ? (item.Valor / CalcularTotalEntradasMes(mesFiltro)) * 100 : 0;
+                                        <tr>
+                                            <td class="ps-3"><input type="checkbox" class="form-check-input" @bind="item.Pago" /></td>
+                                            <td class="@(item.Pago ? "text-decoration-line-through text-muted" : "fw-bold")">@item.Nome</td>
+                                            <td><span class="badge bg-secondary">@item.Classificacao</span></td>
+                                            <td data-bs-toggle="tooltip" title="Consome @pctSalario.ToString("N1")% do Salário (R$ @CalcularTotalEntradasMes(mesFiltro).ToString("N2"))">
+                                                <small class="text-muted fw-bold">@pctSalario.ToString("N1")%</small>
+                                            </td>
+                                            <td class="text-end fw-bold text-danger pe-3">R$ @item.Valor.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div class="p-3 bg-white border-top d-flex justify-content-between align-items-center" data-bs-toggle="tooltip" title="Considera apenas itens marcados como Pago">
+                                <span class="fw-bold text-muted small">💰 SALDO EM CARTEIRA:</span>
+                                <h4 class="m-0 @(CalcularSaldoDinâmico() >= 0 ? "text-success" : "text-danger") fw-bold">R$ @CalcularSaldoDinâmico().ToString("N2")</h4>
+                            </div>
+                            <div class="p-4 rounded-bottom" style="background-color: var(--primary); color: white;">
+                                <div class="row text-center">
+                                    @{
+                                        var totalEntradas = CalcularTotalEntradasMes(mesFiltro);
+                                        var totalSaidas = CalcularTotalSaidasMes(mesFiltro);
+                                        var saldoMes = CalcularSaldoFinalAteMes(mesFiltro);
+                                        var pctDespesas = totalEntradas > 0 ? (totalSaidas / totalEntradas) * 100 : 0;
+                                        var pctSobra = totalEntradas > 0 ? (saldoMes / totalEntradas) * 100 : 0;
+                                    }
+                                    <div class="col-md-4" data-bs-toggle="tooltip" title="Saldo Anterior + Entradas"><small class="opacity-75 d-block small">DISPONÍVEL</small><strong>R$ @((CalcularSaldoFinalAteMes(mesFiltro - 1) + totalEntradas).ToString("N2"))</strong></div>
+                                    <div class="col-md-4 border-start border-end border-secondary" data-bs-toggle="tooltip" title="Despesas equivalem a @pctDespesas.ToString("N0")% do seu Salário">
+                                        <small class="opacity-75 d-block small">SAÍDAS (@pctDespesas.ToString("N0")%)</small>
+                                        <strong>R$ @totalSaidas.ToString("N2")</strong>
+                                    </div>
+                                    <div class="col-md-4" data-bs-toggle="tooltip" title="Sobra equivale a @pctSobra.ToString("N0")% do seu Salário">
+                                        <small class="opacity-75 d-block small">PROJEÇÃO FINAL (@pctSobra.ToString("N0")%)</small>
+                                        <strong class="@(saldoMes >= 0 ? "text-success" : "text-danger")">R$ @saldoMes.ToString("N2")</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card shadow-sm border-0 mb-4 p-4">
+                        <h5 class="fw-bold mb-4 text-primary small text-uppercase">📊 Impacto no Salário</h5>
+                        @foreach (var item in itensFinanceiros.Where(x => x.Tipo == "Saida").OrderByDescending(x => x.Valor)) {
+                            var pct = CalcularTotalEntradasMes(mesFiltro) > 0 ? (item.Valor / CalcularTotalEntradasMes(mesFiltro)) * 100 : 0;
+                            <div class="mb-3" data-bs-toggle="tooltip" title="@item.Nome representa @pct.ToString("N1")% da renda">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span class="fw-bold">@item.Nome</span>
+                                    <span class="text-muted fw-bold">@pct.ToString("N1")%</span>
+                                </div>
+                                <div class="progress" style="height: 6px;"><div class="progress-bar" style="width: @pct.ToString().Replace(",", ".")%"></div></div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="card border-0 p-4 shadow-sm" style="background-color: var(--primary); color: white;">
+                        <h6 class="fw-bold text-uppercase small opacity-75 mb-3">Resumo vs Salário</h6>
+                        @{
+                            var fixo = itensFinanceiros.Where(x => x.Tipo == "Saida" && x.Classificacao == "Fixo").Sum(x => x.Valor);
+                            var vari = itensFinanceiros.Where(x => x.Tipo == "Saida" && x.Classificacao == "Variável").Sum(x => x.Valor);
+                            var sal = CalcularTotalEntradasMes(mesFiltro);
+                            var pF = sal > 0 ? (fixo / sal) * 100 : 0;
+                            var pV = sal > 0 ? (vari / sal) * 100 : 0;
+                        }
+                        <div class="d-flex justify-content-between mb-2 small" data-bs-toggle="tooltip" title="Custos fixos sobre o salário">
+                            <span>Fixos:</span><span class="fw-bold">R$ @fixo.ToString("N2") (@pF.ToString("N0")%)</span>
+                        </div>
+                        <div class="d-flex justify-content-between small" data-bs-toggle="tooltip" title="Custos variáveis sobre o salário">
+                            <span>Variáveis:</span><span class="fw-bold">R$ @vari.ToString("N2") (@pV.ToString("N0")%)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private int mesFiltro = 0;
+    private bool exibindoFormulario = false;
+    private string novoNome = "";
+    private double novoValor = 0;
+    private string novaCategoria = "Saida";
+    private string novaClassificacao = "Fixo";
+    private bool saldoAnteriorPago = false;
+
+    public class ItemFinanceiro {
+        public string Nome { get; set; }
+        public double Valor { get; set; }
+        public string Tipo { get; set; }
+        public string Classificacao { get; set; }
+        public bool Pago { get; set; }
+    }
+
+    private List<ItemFinanceiro> itensFinanceiros = new() {
+        new ItemFinanceiro { Nome = "Salário Principal", Valor = 5000.00, Tipo = "Entrada", Classificacao = "Fixo", Pago = false },
+        new ItemFinanceiro { Nome = "Nubank", Valor = 2166.63, Tipo = "Saida", Classificacao = "Variável", Pago = false },
+        new ItemFinanceiro { Nome = "Condomínio", Valor = 1176.78, Tipo = "Saida", Classificacao = "Fixo", Pago = false },
+        new ItemFinanceiro { Nome = "Internet", Valor = 150.00, Tipo = "Saida", Classificacao = "Fixo", Pago = false }
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        await JS.InvokeVoidAsync("ativarTooltips");
+        if (mesFiltro == 0) {
+            await Task.Delay(300);
+            var meses = Enumerable.Range(1, 12).ToList();
+            var saldos = meses.Select(i => CalcularSaldoFinalAteMes(i)).ToArray();
+            var entradas = meses.Select(i => CalcularTotalEntradasMes(i)).ToArray();
+            var saidas = meses.Select(i => CalcularTotalSaidasMes(i)).ToArray();
+            try { await JS.InvokeVoidAsync("renderizarGraficoAnual", saldos, entradas, saidas); } catch { }
+        }
+    }
+
+    private double CalcularSaldoDinâmico() {
+        double saldo = 0;
+        if (saldoAnteriorPago) saldo += CalcularSaldoFinalAteMes(mesFiltro - 1);
+        foreach (var item in itensFinanceiros) {
+            if (item.Pago) {
+                if (item.Tipo == "Entrada") saldo += item.Valor;
+                else saldo -= item.Valor;
+            }
+        }
+        return saldo;
+    }
+
+    private void ProximoMes() { if (mesFiltro < 12) mesFiltro++; }
+    private void MesAnterior() { if (mesFiltro > 1) mesFiltro--; }
+
+    private void AdicionarNovaLinha() {
+        if (!string.IsNullOrWhiteSpace(novoNome)) {
+            itensFinanceiros.Add(new ItemFinanceiro { Nome = novoNome, Valor = novoValor, Tipo = novaCategoria, Classificacao = novaClassificacao, Pago = false });
+            novoNome = ""; novoValor = 0; exibindoFormulario = false;
+        }
+    }
+
+    private double GetValorPorNome(string nome, int mes) => itensFinanceiros.FirstOrDefault(x => x.Nome == nome)?.Valor ?? 0;
+    private double CalcularTotalEntradasMes(int mes) => itensFinanceiros.Where(x => x.Tipo == "Entrada").Sum(x => x.Valor);
+    private double CalcularTotalSaidasMes(int mes) => itensFinanceiros.Where(x => x.Tipo == "Saida").Sum(x => x.Valor);
+
+    private double CalcularSaldoFinalAteMes(int mesAlvo) {
+        double saldo = 2500.00;
+        for (int i = 1; i <= mesAlvo; i++) {
+            saldo = (saldo + CalcularTotalEntradasMes(i)) - CalcularTotalSaidasMes(i);
+        }
+        return saldo;
+    }
+}

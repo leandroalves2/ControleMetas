@@ -10,11 +10,8 @@
     <link rel="stylesheet" href="ControleMetas.styles.css" />
     <link rel="icon" href="data:,">
 </head>
-
 <body>
-
     <div class="status-bar-safe-area"></div>
-
     <div id="app">Loading...</div>
 
     <div id="blazor-error-ui" data-nosnippet>
@@ -23,8 +20,59 @@
         <span class="dismiss">🗙</span>
     </div>
 
-    <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
+    <script>
+        window.ativarTooltips = () => {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        };
+
+        window.renderizarGraficoAnual = (dadosSaldo, dadosEntradas, dadosSaidas) => {
+            const el = document.querySelector("#chart-anual");
+            if (!el) return;
+            el.innerHTML = "";
+
+            var options = {
+                series: [
+                    { name: 'Saldo Final', type: 'column', data: dadosSaldo },
+                    { name: 'Total Entradas', type: 'line', data: dadosEntradas },
+                    { name: 'Total Saídas', type: 'line', data: dadosSaidas }
+                ],
+                chart: { height: 350, type: 'line', toolbar: { show: false } },
+                stroke: { width: [0, 3, 3], curve: 'smooth' },
+                colors: ['#2DA44E', '#0F2A44', '#D32F2F'],
+                plotOptions: { bar: { borderRadius: 4, columnWidth: '50%' } },
+                dataLabels: {
+                    enabled: true,
+                    enabledOnSeries: [0],
+                    formatter: function (val) { return "R$ " + val.toFixed(2).replace('.', ','); },
+                    style: { fontSize: '10px' }
+                },
+                xaxis: {
+                    categories: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+                    labels: { style: { colors: '#0F2A44', fontWeight: 600 } }
+                },
+                yaxis: {
+                    labels: {
+                        formatter: function (val) { return "R$ " + val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }); },
+                        style: { colors: '#0F2A44' }
+                    }
+                },
+                tooltip: {
+                    shared: true,
+                    intersect: false,
+                    y: { formatter: function (val) { return "R$ " + val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }); } }
+                },
+                legend: { position: 'top' }
+            };
+            new ApexCharts(el, options).render();
+        };
+    </script>
+    <script src="_framework/blazor.webview.js"></script>
 </body>
-
 </html>
